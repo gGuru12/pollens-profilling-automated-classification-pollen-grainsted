@@ -1,0 +1,476 @@
+import cv2
+import numpy as np
+from skimage import filters, morphology, exposure
+from PIL import Image
+import matplotlib.pyplot as plt
+
+def preprocess_pollen_image(image_path, resize_dim=(128, 128), debug=False):
+    # Step 1: Load image
+    image = cv2.imread(image_path)
+    original = image.copy()
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    # Step 2: Resize image
+    image = cv2.resize(image, resize_dim)
+
+    # Step 3: Convert to grayscale
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+
+    # Step 4: Histogram equalization for contrast enhancement
+    eq_gray = exposure.equalize_hist(gray)
+
+    # Step 5: Gaussian blur to reduce noise
+    blurred = cv2.GaussianBlur(eq_gray, (5, 5), 0)
+
+    # Step 6: Thresholding (Otsu)
+    thresh_val = filters.threshold_otsu(blurred)
+    binary = blurred > thresh_val
+
+    # Step 7: Morphological operations (clean small artifacts)
+    cleaned = morphology.remove_small_objects(binary, min_size=64)
+    cleaned = morphology.remove_small_holes(cleaned, area_threshold=64)
+
+    # Step 8: Convert back to uint8 image
+    final_image = (cleaned * 255).astype(np.uint8)
+
+    if debug:
+        # Display intermediate steps
+        fig, axs = plt.subplots(1, 4, figsize=(15, 4))
+        axs[0].imshow(image)
+        axs[0].set_title("RGB Image")
+        axs[1].imshow(eq_gray, cmap='gray')
+        axs[1].set_title("Equalized Grayscale")
+        axs[2].imshow(binary, cmap='gray')
+        axs[2].set_title("Binary Image")
+        axs[3].imshow(final_image, cmap='gray')
+        axs[3].set_title("Cleaned Binary")
+        for ax in axs:
+            ax.axis('off')
+        plt.tight_layout()
+        plt.show()
+
+    return final_image
+
+# Example usage
+processed = preprocess_pollen_image("example_pollen.jpg", debug=True)
+To build a machine learning model for **automated classification of pollen grains** using profiling data (typically from images or microscopic measurements), here's a general pipeline with code to help you get started.
+
+---
+
+### 🧠 **Pollen Grain Classification Pipeline**
+
+#### **1. Assumptions**
+
+You have:
+
+* Labeled image data or extracted features (e.g. from microscopy, shape descriptors, etc.)
+* A goal to classify grains into species/types using supervised learning
+
+---
+
+### 🧰 **1. Setup and Imports**
+
+```python
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix
+```
+
+---
+
+### 📊 **2. Load and Preprocess Data**
+
+Assuming you have a `.csv` file with extracted pollen grain features:
+
+```python
+# Load dataset
+df = pd.read_csv('pollen_data.csv')  # Columns: ['Area', 'Perimeter', 'Eccentricity', ..., 'Label']
+
+# Encode categorical labels
+le = LabelEncoder()
+df['Label'] = le.fit_transform(df['Label'])
+
+# Split features and target
+X = df.drop('Label', axis=1)
+y = df['Label']
+
+# Normalize features
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+# Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, stratify=y, random_state=42)
+```
+
+---
+
+### 🤖 **3. Train Model**
+
+Using a Random Forest Classifier (can swap with SVM, XGBoost, CNN, etc.):
+
+```python
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+
+# Predictions
+y_pred = model.predict(X_test)
+```
+
+---
+
+### 📈 **4. Evaluate the Model**
+
+```python
+# Confusion matrix
+conf_mat = confusion_matrix(y_test, y_pred)
+sns.heatmap(conf_mat, annot=True, fmt='d', cmap='Blues', xticklabels=le.classes_, yticklabels=le.classes_)
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('Confusion Matrix')
+plt.show()
+
+# Classification report
+print(classification_report(y_test, y_pred, target_names=le.classes_))
+```
+
+---
+
+### 🧪 **Optional: Feature Importance**
+
+```python
+importances = model.feature_importances_
+feat_names = X.columns
+plt.figure(figsize=(10, 6))
+sns.barplot(x=importances, y=feat_names)
+plt.title("Feature Importance")
+plt.show()
+```
+
+---
+
+### 🧠 If You Have Images Instead
+
+Use a CNN with `TensorFlow` or `PyTorch`. Let me know and I’ll give you a CNN version for image-based pollen classification.
+
+Would you like that image-based version too?
+To **save the trained model** for automated classification of pollen grains, you can use Python’s `joblib` or `pickle` for scikit-learn models. Here’s how to do it step by step.
+
+---
+
+### 💾 **Step-by-Step: Save & Load Model (scikit-learn)**
+
+#### ✅ Assumes you’ve already trained your model like this:
+
+```python
+from sklearn.ensemble import RandomForestClassifier
+
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+```
+
+---
+
+### 📦 **1. Save the Model**
+
+```python
+import joblib
+
+# Save the trained model
+joblib.dump(model, 'pollen_classifier_model.pkl')
+
+# Save the label encoder and scaler (important for consistent inference)
+joblib.dump(le, 'label_encoder.pkl')
+joblib.dump(scaler, 'scaler.pkl')
+```
+
+---
+
+### 🔁 **2. Load the Model Later**
+
+You or someone else can reload the model and preprocessors like this:
+
+```python
+# Load the model
+model = joblib.load('pollen_classifier_model.pkl')
+
+# Load the label encoder and scaler
+le = joblib.load('label_encoder.pkl')
+scaler = joblib.load('scaler.pkl')
+
+# Example usage:
+X_new_scaled = scaler.transform(X_new)  # Preprocess new data
+y_pred = model.predict(X_new_scaled)
+predicted_labels = le.inverse_transform(y_pred)
+```
+
+---
+
+### 📂 Folder Structure Suggestion
+
+```
+/project-folder
+│
+├── pollen_data.csv
+├── pollen_classifier_model.pkl
+├── label_encoder.pkl
+├── scaler.pkl
+└── your_model_training_script.py
+```
+
+---
+
+If you’re using a **deep learning model (e.g. CNN)** with TensorFlow/Keras or PyTorch, let me know — saving and loading works differently for those.
+
+Would you like a version using CNNs and image datasets (e.g., using TensorFlow or PyTorch)?
+To **test your pollen grain classification model**, you’ll need to load your saved model and preprocessing tools (scaler and label encoder), then apply them to new or held-out test data.
+
+---
+
+### ✅ **Assumptions**
+
+* You’ve already trained and saved the model (e.g. `pollen_classifier_model.pkl`)
+* You have test data available (either from the original `train_test_split` or a new sample)
+
+---
+
+### 🔍 **Step-by-Step: Test the Model**
+
+#### 📦 **1. Load the Saved Model and Preprocessors**
+
+```python
+import joblib
+import pandas as pd
+
+# Load the saved model and tools
+model = joblib.load('pollen_classifier_model.pkl')
+scaler = joblib.load('scaler.pkl')
+label_encoder = joblib.load('label_encoder.pkl')
+```
+
+---
+
+#### 🧪 **2. Load and Preprocess the Test Data**
+
+Example: Loading test data from a CSV file (structure must match training features)
+
+```python
+# Load test data
+test_df = pd.read_csv('pollen_test_data.csv')  # should match training features
+
+# Keep a copy of the true labels (if available)
+y_true = test_df['Label'] if 'Label' in test_df.columns else None
+
+# Drop label column for prediction
+X_test = test_df.drop('Label', axis=1) if y_true is not None else test_df
+
+# Scale test data
+X_test_scaled = scaler.transform(X_test)
+```
+
+---
+
+#### 🧠 **3. Make Predictions**
+
+```python
+# Predict
+y_pred = model.predict(X_test_scaled)
+
+# Convert numeric predictions back to class labels
+predicted_labels = label_encoder.inverse_transform(y_pred)
+```
+
+---
+
+#### 📊 **4. Evaluate the Model (Optional)**
+
+If ground truth labels (`y_true`) are available:
+
+```python
+from sklearn.metrics import classification_report, confusion_matrix
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Convert y_true to numeric form if needed
+if isinstance(y_true.iloc[0], str):
+    y_true_encoded = label_encoder.transform(y_true)
+else:
+    y_true_encoded = y_true
+
+# Print classification report
+print(classification_report(y_true_encoded, y_pred, target_names=label_encoder.classes_))
+
+# Confusion matrix
+conf_matrix = confusion_matrix(y_true_encoded, y_pred)
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='YlGnBu', 
+            xticklabels=label_encoder.classes_, yticklabels=label_encoder.classes_)
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.title('Confusion Matrix')
+plt.show()
+```
+
+---
+
+### ✅ Example Output
+
+* **Classification Report**: Shows precision, recall, and F1-score
+* **Confusion Matrix**: Visual representation of correct/incorrect predictions
+
+---
+
+If you're testing on **image data**, let me know — the testing code differs (involves loading images, resizing, normalizing, and predicting with a CNN).
+
+Would you like a version of this code for image-based pollen grain classification using a CNN (e.g. TensorFlow)?
+To build a simple **HTML-based web application** for **Automated Classification of Pollen Grains**, we'll create the following structure:
+
+---
+
+### 🌐 **App Overview**
+
+* Upload test data (`CSV`)
+* Click **"Classify"**
+* Display predicted pollen grain types
+* Optionally, show a download button
+
+---
+
+### 🗂️ **Project Structure**
+
+```
+pollen_app/
+│
+├── templates/
+│   └── index.html         ← Main HTML page
+│
+├── static/
+│   └── style.css          ← (Optional) Styling
+│
+├── app.py                 ← Flask backend
+├── pollen_classifier_model.pkl
+├── scaler.pkl
+└── label_encoder.pkl
+```
+
+---
+
+### 🧩 1. `index.html` (inside `templates/`)
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Pollen Grain Classifier</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Automated Pollen Grain Classifier</h2>
+        <form action="/predict" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".csv" required>
+            <button type="submit">Classify</button>
+        </form>
+
+        {% if predictions %}
+            <h3>Predicted Labels:</h3>
+            <ul>
+                {% for label in predictions %}
+                    <li>{{ label }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    </div>
+</body>
+</html>
+```
+
+---
+
+### 🧠 2. `app.py` (Flask Backend)
+
+```python
+from flask import Flask, render_template, request
+import pandas as pd
+import joblib
+
+# Load model and tools
+model = joblib.load('pollen_classifier_model.pkl')
+scaler = joblib.load('scaler.pkl')
+label_encoder = joblib.load('label_encoder.pkl')
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return render_template('index.html')
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if 'file' not in request.files:
+        return "No file uploaded."
+
+    file = request.files['file']
+    df = pd.read_csv(file)
+
+    # Remove label column if present
+    if 'Label' in df.columns:
+        df = df.drop('Label', axis=1)
+
+    # Scale features
+    df_scaled = scaler.transform(df)
+
+    # Predict
+    predictions = model.predict(df_scaled)
+    labels = label_encoder.inverse_transform(predictions)
+
+    return render_template('index.html', predictions=labels.tolist())
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+
+---
+
+### 🎨 3. (Optional) `style.css` in `static/`
+
+```css
+body {
+    font-family: Arial, sans-serif;
+    text-align: center;
+    margin-top: 50px;
+}
+
+.container {
+    width: 60%;
+    margin: auto;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+}
+```
+
+---
+
+### 🚀 Run Your App
+
+```bash
+pip install flask pandas scikit-learn joblib
+python app.py
+```
+
+Visit: [http://127.0.0.1:5000](http://127.0.0.1:5000)
+
+---
+
+Would you like me to expand this with:
+
+* Image upload support?
+* Downloadable predictions?
+* Deployment instructions (e.g. on Render or Hugging Face Spaces)?
